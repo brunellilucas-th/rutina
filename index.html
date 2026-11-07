@@ -649,7 +649,7 @@ function renderProgress() {
     <li>Cinta: el trote continuo sube 2 min por semana y los intervalos pasan de 6 a 8 rondas. Si molestan rodillas o canillas, caminata con 8–12 % de inclinación.</li>
     <li>Si el total pasa de 1 h 20, recortá la entrada en calor de piernas a 5 min.</li>
   </ul>
-  <h2 class="ptitle" style="margin-top:18px">Copia de seguridad</h2><p style="font-size:14px;margin:0 2px 10px;color:var(--muted)">Tus pesos se guardan en este celular. Hacé una copia de vez en cuando y guardala en iCloud o mandatela por WhatsApp.</p><div class="backup"><button type="button" class="ghost" data-act="export">Guardar copia</button><label class="ghost" for="importfile">Cargar copia</label><input type="file" id="importfile" accept="application/json,.json" hidden></div><div class="danger" id="danger"><button type="button" data-act="askclear">Borrar los registros de la semana ${S.week}</button></div></div>`;
+  <h2 class="ptitle" style="margin-top:18px">Copia de seguridad</h2><p style="font-size:14px;margin:0 2px 10px;color:var(--muted)">Tus pesos se guardan en este celular. Hacé una copia de vez en cuando y guardala en iCloud o mandatela por WhatsApp.</p><div class="backup"><button type="button" class="ghost" data-act="export">Guardar copia</button><label class="ghost" for="importfile">Cargar copia</label><input type="file" id="importfile" accept="application/json,.json" hidden></div><h2 class="ptitle" style="margin-top:18px">Actualizaciones</h2><p style="font-size:14px;margin:0 2px 10px;color:var(--muted)">La app nunca usa internet por su cuenta. Cuando te avise que hay cambios, tocá este botón <b>estando en Wi-Fi</b>. Versión instalada: <span class="num">2</span>.</p><div class="backup"><button type="button" class="ghost" data-act="update" id="updbtn">Buscar actualización</button></div><div class="danger" id="danger"><button type="button" data-act="askclear">Borrar los registros de la semana ${S.week}</button></div></div>`;
   return h;
 }
 
@@ -678,12 +678,31 @@ document.addEventListener("change", async ev => {
   ev.target.value = "";
 });
 
+// ---------- manual update (only when the user taps) ----------
+const APP_VERSION = "2";
+async function checkUpdate(btn) {
+  btn.disabled = true; btn.textContent = "Buscando…";
+  try {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    const v = (await r.json()).version;
+    if (String(v) === APP_VERSION) { toast("Ya tenés la última versión"); btn.disabled = false; btn.textContent = "Buscar actualización"; return; }
+    const reg = await navigator.serviceWorker.ready;
+    btn.textContent = "Descargando…";
+    navigator.serviceWorker.addEventListener("message", ev => {
+      if (ev.data && ev.data.type === "updated") { toast("Actualizada"); setTimeout(() => location.reload(), 600); }
+      if (ev.data && ev.data.type === "update-failed") { toast("No se pudo actualizar. Probá de nuevo con Wi-Fi"); btn.disabled = false; btn.textContent = "Buscar actualización"; }
+    }, { once: true });
+    reg.active.postMessage({ type: "update" });
+  } catch (e) { toast("Sin conexión. Probá cuando estés en Wi-Fi"); btn.disabled = false; btn.textContent = "Buscar actualización"; }
+}
+
 // ---------- events ----------
 document.addEventListener("click", ev => {
   const b = ev.target.closest("button"); if (!b) return;
   if (b.dataset.week) { S.week = +b.dataset.week; persistLocal(); render(); return; }
   if (b.dataset.day != null && b.classList.contains("day")) { S.day = +b.dataset.day; S.edit = false; persistLocal(); render(); window.scrollTo({ top: 0 }); return; }
   if (b.dataset.act === "export") { exportData(); return; }
+  if (b.dataset.act === "update") { checkUpdate(b); return; }
   if (b.dataset.act === "edit") { S.edit = !S.edit; render(); return; }
   if (b.dataset.how) {
     const id = b.dataset.how, art = b.closest(".ex"), open = !OPEN.has(id);
@@ -732,9 +751,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target
 render();
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").then(reg => {
-    reg.addEventListener("updatefound", () => { const nw = reg.installing; nw && nw.addEventListener("statechange", () => { if (nw.state === "installed" && navigator.serviceWorker.controller) toast("Hay una versión nueva: cerrá y abrí la app"); }); });
-  }).catch(() => {});
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "all" }).catch(() => {});
 }
 </script>
 
